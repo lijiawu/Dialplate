@@ -57,6 +57,10 @@ public class DialplateView extends TextView {
     private int mProgressbarBgColor;
     private int mProgressbarStripeColor;
     private float mProgressbarStripeWidth;
+    /**背景色*/
+    private int mBackgroundColor = Color.WHITE;
+    /**progressbar距离背景边界的距离*/
+    private float mBackgroundMargin = 6f;
 
     private Paint mPaint = null;
     private int mWidth;
@@ -246,6 +250,19 @@ public class DialplateView extends TextView {
         mHeight = getHeight();
         updateValidRectF(mWidth, mHeight);
 
+        //圆心
+        float centerX = mRectF.centerX();
+        float centerY = mRectF.centerY();
+
+        float rInnerCircle = mRectF.width() / 2 - mProgressbarWidth / 2;
+        float rOutCircle = mRectF.width() / 2 + mProgressbarWidth / 2;
+
+        //绘制背景
+        canvas.drawColor(Color.TRANSPARENT);
+        mPaint.setColor(mBackgroundColor);
+        mPaint.setStyle(Paint.Style.FILL);
+        canvas.drawCircle(centerX,centerX,rOutCircle+mBackgroundMargin,mPaint);
+
         //绘制中间文字
         setTextAlinInCenter();
         mPaint.setColor(mTextColor);
@@ -265,21 +282,18 @@ public class DialplateView extends TextView {
 
         //绘制progressbar上的条纹,计算方法就是计算指定角度上外部圆上的点及内部圆上的点,并为了
         //使条纹不接触到progressbar的边,所以需要增加一下内部圆的半径,减少一下外部圆的半径
+        float rStripeInnerCircle = rInnerCircle+STROPE_PADDING;
+        float rStripeOuterCircle = rOutCircle-STROPE_PADDING;
+
         mPaint.setColor(mProgressbarStripeColor);
         mPaint.setStrokeWidth(mProgressbarStripeWidth);
-        //圆心
-        float centerX = mRectF.centerX();
-        float centerY = mRectF.centerY();
-
-        float rInnerCircle = mRectF.width() / 2 - mProgressbarWidth / 2+STROPE_PADDING;
-        float rOutCircle = mRectF.width() / 2 + mProgressbarWidth / 2-STROPE_PADDING;
 
         for(float i = mStartAngle;i<mStartAngle+mSweepAngleMax;i+=STROPE_MARGIN){
-            float innerCircleEdgePointX = (float) (rInnerCircle * Math.cos(Math.toRadians(i)) + centerX);
-            float innerCircleEdgePointY = (float) (rInnerCircle * Math.sin(Math.toRadians(i)) + centerY);
+            float innerCircleEdgePointX = (float) (rStripeInnerCircle * Math.cos(Math.toRadians(i)) + centerX);
+            float innerCircleEdgePointY = (float) (rStripeInnerCircle * Math.sin(Math.toRadians(i)) + centerY);
 
-            float outCircleEdgePointX = (float) (rOutCircle * Math.cos(Math.toRadians(i)) + centerX);
-            float outCircleEdgePointY = (float) (rOutCircle * Math.sin(Math.toRadians(i)) + centerY);
+            float outCircleEdgePointX = (float) (rStripeOuterCircle * Math.cos(Math.toRadians(i)) + centerX);
+            float outCircleEdgePointY = (float) (rStripeOuterCircle * Math.sin(Math.toRadians(i)) + centerY);
             canvas.drawLine(outCircleEdgePointX, outCircleEdgePointY, innerCircleEdgePointX, innerCircleEdgePointY, mPaint);
         }
     }
