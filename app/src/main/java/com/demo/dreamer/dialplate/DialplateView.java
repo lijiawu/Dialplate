@@ -7,6 +7,7 @@ import android.content.res.TypedArray;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.LinearGradient;
+import android.graphics.Matrix;
 import android.graphics.Paint;
 import android.graphics.RectF;
 import android.graphics.Shader;
@@ -15,6 +16,8 @@ import android.text.TextUtils;
 import android.util.AttributeSet;
 import android.util.Log;
 import android.view.MotionEvent;
+import android.view.View;
+import android.view.ViewTreeObserver;
 import android.view.animation.DecelerateInterpolator;
 import android.widget.TextView;
 
@@ -25,7 +28,7 @@ import com.example.dreamer.myapplication.R;
  */
 public class DialplateView extends TextView {
 
-    private static final String TAG = "DynamicCircleView";
+    private static final String TAG = "DialplateView";
     private static final String STRING_FORMAI_DEFAULT = "%s";
     private static final long ANIMATION_DUR = 1000L;
     /**条纹距离progressbar边缘的距离*/
@@ -66,6 +69,7 @@ public class DialplateView extends TextView {
     private int mWidth;
     private int mHeight;
     private RectF mRectF = new RectF();
+    private float mCenterX,mCenterY,mRadius,mLineHeaderRadius;
 
     /**
      * 扇形开始的角度
@@ -84,8 +88,12 @@ public class DialplateView extends TextView {
     private String mCurFormatString = "%s";
     private float mTextX;
     private float mTextY;
+    //过度mShader
     private Shader mShader = null;
-
+    private Matrix mRotateMatrix = new Matrix();
+    /**过渡颜色数组*/
+    private final int[] mTransitionColor = new int[]{Color.GREEN,Color.GREEN,Color.RED,Color.RED};
+    private final float[] mTransitionRange = new float[]{0.0f,0.4f,0.6f,1f};
     private ValueAnimator anim = null;
 
     public DialplateView(Context context) {
@@ -143,7 +151,7 @@ public class DialplateView extends TextView {
                 if (mCurValue > mValue)
                     return;
                 mSweepAngle = toSweepAngle(mCurValue);
-                mCurString = String.format(mCurFormatString, (int)(mCurValue*100));
+                mCurString = String.format(mCurFormatString, (int) (mCurValue * 100));
                 invalidate();
             }
         });
@@ -160,19 +168,26 @@ public class DialplateView extends TextView {
      * @param endColor 表盘终止颜色
      */
     public void setValue(int value,int textColor,int startColor,int endColor){
+    }
 
+    @Override
+    protected void onMeasure(int widthMeasureSpec, int heightMeasureSpec) {
+        super.onMeasure(widthMeasureSpec, heightMeasureSpec);
+        Log.d(TAG,"onMeasure"+" height"+getHeight()+" width"+getWidth());
     }
 
     @Override
     protected void onLayout(boolean changed, int left, int top, int right,
                             int bottom) {
-        Log.d(TAG, "onLayout()");
+        //TODO:initViewParams
+        Log.d(TAG, "onLayout()" + " height:" + getHeight() + " width" + getWidth());
     }
+
 
     @Override
     protected void onAttachedToWindow() {
         super.onAttachedToWindow();
-        Log.d(TAG, "onAttachedToWindow()");
+        Log.d(TAG, "onAttachedToWindow()"+" height"+getHeight()+" width"+getWidth());
     }
 
     public void startAnimation() {
@@ -224,7 +239,14 @@ public class DialplateView extends TextView {
     }
 
     @Override
+    public boolean onPreDraw() {
+        Log.d(TAG,"onPreDraw");
+        return super.onPreDraw();
+    }
+
+    @Override
     public void onDraw(Canvas canvas) {
+        Log.d(TAG,"onDraw");
         doAnimationFrame(canvas);
     }
 
@@ -253,15 +275,18 @@ public class DialplateView extends TextView {
         //圆心
         float centerX = mRectF.centerX();
         float centerY = mRectF.centerY();
+        float radius = mRectF.width()/2;
+        //progressbar头部的圆的半径
+        float lineHeaderRadius = mProgressbarWidth/2;
 
-        float rInnerCircle = mRectF.width() / 2 - mProgressbarWidth / 2;
-        float rOutCircle = mRectF.width() / 2 + mProgressbarWidth / 2;
+        float rInnerCircle = radius - lineHeaderRadius;
+        float rOutCircle = radius + lineHeaderRadius;
 
         //绘制背景
         canvas.drawColor(Color.TRANSPARENT);
         mPaint.setColor(mBackgroundColor);
         mPaint.setStyle(Paint.Style.FILL);
-        canvas.drawCircle(centerX,centerX,rOutCircle+mBackgroundMargin,mPaint);
+        canvas.drawCircle(centerX, centerX, rOutCircle + mBackgroundMargin, mPaint);
 
         //绘制中间文字
         setTextAlinInCenter();
@@ -276,8 +301,18 @@ public class DialplateView extends TextView {
         mPaint.setStyle(Paint.Style.STROKE);
         canvas.drawArc(mRectF, mStartAngle, mSweepAngleMax, false, mPaint);
 
-        //绘制progressbar
+        //绘制progressbar,计算旋转矩阵,由于这个地方线的头部是圆的,所以需要知道渐变开始的角度(比startSweepAngle小一个角度)
         mPaint.setColor(mProgressbarColor);
+        float offsetAngle = (float) Math.toDegrees(Math.atan(lineHeaderRadius / radius));
+        mRotateMatrix.setRotate(mStartAngle-offsetAngle,centerX,centerY);
+        //计算渐进颜色结束的位置
+        float shaderColorEndPosition = (mSweepAngleMax+2*offsetAngle)/360;
+        mTransitionRange[mTransitionRange.length-1] = shaderColorEndPosition;
+
+        mShader = new SweepGradient(centerX,centerY,mTransitionColor,mTransitionRange);
+
+        mShader.setLocalMatrix(mRotateMatrix);
+        mPaint.setShader(mShader);
         canvas.drawArc(mRectF, mStartAngle, mSweepAngle, false, mPaint);
 
         //绘制progressbar上的条纹,计算方法就是计算指定角度上外部圆上的点及内部圆上的点,并为了
@@ -286,6 +321,7 @@ public class DialplateView extends TextView {
         float rStripeOuterCircle = rOutCircle-STROPE_PADDING;
 
         mPaint.setColor(mProgressbarStripeColor);
+        mPaint.setShader(null);
         mPaint.setStrokeWidth(mProgressbarStripeWidth);
 
         for(float i = mStartAngle;i<mStartAngle+mSweepAngleMax;i+=STROPE_MARGIN){
@@ -305,6 +341,7 @@ public class DialplateView extends TextView {
         switch (action) {
             case MotionEvent.ACTION_DOWN:
                 setValue(mValue);
+                requestLayout();
                 startAnimation();
                 break;
         }
