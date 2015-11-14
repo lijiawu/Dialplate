@@ -71,6 +71,14 @@ public class DialplateView extends TextView {
     private RectF mRectF = new RectF();
     private float mCenterX,mCenterY,mRadius,mLineHeaderRadius;
 
+    /**先内外圆*/
+    private float rInnerCircle,rOutCircle;
+    /**画条纹计算需要的内外圆*/
+    private float rStripeInnerCircle,rStripeOuterCircle;
+
+    /**绘制progressbar,计算旋转矩阵,由于这个地方线的头部是圆的,所以需要知道渐变开始的角度(比startSweepAngle小一个角度)*/
+    private float mOffsetAngle;
+
     /**
      * 扇形开始的角度
      */
@@ -91,9 +99,16 @@ public class DialplateView extends TextView {
     //过度mShader
     private Shader mShader = null;
     private Matrix mRotateMatrix = new Matrix();
-    /**过渡颜色数组*/
-    private final int[] mTransitionColor = new int[]{Color.GREEN,Color.GREEN,Color.RED,Color.RED};
-    private final float[] mTransitionRange = new float[]{0.0f,0.4f,0.6f,1f};
+    /**背景过渡Shader*/
+    private Shader mBgShader;
+    private final int[] mProgressbarTransitionColor = new int[]{Color.TRANSPARENT,Color.TRANSPARENT,Color.TRANSPARENT,Color.TRANSPARENT};
+    private final float[] mProgressbarTransitionRange = new float[]{0.0f,0.4f,0.6f,1f};
+
+    /**条纹过渡Shader*/
+    private Shader mStripShader;
+    private final int[] mStripTransitionColor = new int[]{Color.RED,Color.RED,Color.TRANSPARENT,Color.TRANSPARENT};
+    private final float[] mStripTransitionRange = new float[]{0.0f,0.2f,0.2f,1f};
+
     private ValueAnimator anim = null;
 
     public DialplateView(Context context) {
@@ -179,7 +194,38 @@ public class DialplateView extends TextView {
     @Override
     protected void onLayout(boolean changed, int left, int top, int right,
                             int bottom) {
-        //TODO:initViewParams
+        mWidth = getWidth();
+        mHeight = getHeight();
+        updateValidRectF(mWidth, mHeight);
+        //圆心
+         mCenterX = mRectF.centerX();
+         mCenterY = mRectF.centerY();
+         mRadius = mRectF.width()/2;
+        //progressbar头部的圆的半径
+         mLineHeaderRadius = mProgressbarWidth/2;
+
+        //线内,外圆半径
+        rInnerCircle = mRadius - mLineHeaderRadius;
+        rOutCircle = mRadius + mLineHeaderRadius;
+
+        //绘制中间文字
+        setTextAlinInCenter();
+
+        mOffsetAngle = (float) Math.toDegrees(Math.atan(mLineHeaderRadius / mRadius));
+
+        mRotateMatrix.setRotate(mStartAngle-mOffsetAngle,mCenterX,mCenterY);
+
+        mBgShader = new SweepGradient(mCenterX,mCenterY,mProgressbarTransitionColor,mProgressbarTransitionRange);
+        mBgShader.setLocalMatrix(mRotateMatrix);
+
+        mStripShader = new SweepGradient(mCenterX,mCenterY,mStripTransitionColor,mStripTransitionRange);
+        mStripShader.setLocalMatrix(mRotateMatrix);
+
+        //绘制progressbar上的条纹,计算方法就是计算指定角度上外部圆上的点及内部圆上的点,并为了
+        //使条纹不接触到progressbar的边,所以需要增加一下内部圆的半径,减少一下外部圆的半径
+        rStripeInnerCircle = rInnerCircle+STROPE_PADDING;
+        rStripeOuterCircle = rOutCircle-STROPE_PADDING;
+
         Log.d(TAG, "onLayout()" + " height:" + getHeight() + " width" + getWidth());
     }
 
@@ -246,7 +292,6 @@ public class DialplateView extends TextView {
 
     @Override
     public void onDraw(Canvas canvas) {
-        Log.d(TAG,"onDraw");
         doAnimationFrame(canvas);
     }
 
@@ -268,28 +313,15 @@ public class DialplateView extends TextView {
      * @param canvas view中对应的画布
      */
     protected void doAnimationFrame(Canvas canvas) {
-        mWidth = getWidth();
-        mHeight = getHeight();
-        updateValidRectF(mWidth, mHeight);
-
-        //圆心
-        float centerX = mRectF.centerX();
-        float centerY = mRectF.centerY();
-        float radius = mRectF.width()/2;
-        //progressbar头部的圆的半径
-        float lineHeaderRadius = mProgressbarWidth/2;
-
-        float rInnerCircle = radius - lineHeaderRadius;
-        float rOutCircle = radius + lineHeaderRadius;
-
         //绘制背景
+        mShader = null;
         canvas.drawColor(Color.TRANSPARENT);
         mPaint.setColor(mBackgroundColor);
+        mPaint.setShader(mShader);
         mPaint.setStyle(Paint.Style.FILL);
-        canvas.drawCircle(centerX, centerX, rOutCircle + mBackgroundMargin, mPaint);
+        canvas.drawCircle(mCenterX, mCenterY, rOutCircle + mBackgroundMargin, mPaint);
 
-        //绘制中间文字
-        setTextAlinInCenter();
+        //绘制文字
         mPaint.setColor(mTextColor);
         mPaint.setTextSize(mTextSize);
         mPaint.setStyle(Paint.Style.FILL);
@@ -301,35 +333,24 @@ public class DialplateView extends TextView {
         mPaint.setStyle(Paint.Style.STROKE);
         canvas.drawArc(mRectF, mStartAngle, mSweepAngleMax, false, mPaint);
 
-        //绘制progressbar,计算旋转矩阵,由于这个地方线的头部是圆的,所以需要知道渐变开始的角度(比startSweepAngle小一个角度)
+        //绘制progressbar
         mPaint.setColor(mProgressbarColor);
-        float offsetAngle = (float) Math.toDegrees(Math.atan(lineHeaderRadius / radius));
-        mRotateMatrix.setRotate(mStartAngle-offsetAngle,centerX,centerY);
-        //计算渐进颜色结束的位置
-        float shaderColorEndPosition = (mSweepAngleMax+2*offsetAngle)/360;
-        mTransitionRange[mTransitionRange.length-1] = shaderColorEndPosition;
-
-        mShader = new SweepGradient(centerX,centerY,mTransitionColor,mTransitionRange);
-
-        mShader.setLocalMatrix(mRotateMatrix);
+        mShader = mBgShader;
         mPaint.setShader(mShader);
         canvas.drawArc(mRectF, mStartAngle, mSweepAngle, false, mPaint);
 
-        //绘制progressbar上的条纹,计算方法就是计算指定角度上外部圆上的点及内部圆上的点,并为了
-        //使条纹不接触到progressbar的边,所以需要增加一下内部圆的半径,减少一下外部圆的半径
-        float rStripeInnerCircle = rInnerCircle+STROPE_PADDING;
-        float rStripeOuterCircle = rOutCircle-STROPE_PADDING;
-
+        //绘制条纹颜色
+        mShader = mStripShader;
         mPaint.setColor(mProgressbarStripeColor);
-        mPaint.setShader(null);
+        mPaint.setShader(mShader);
         mPaint.setStrokeWidth(mProgressbarStripeWidth);
 
         for(float i = mStartAngle;i<mStartAngle+mSweepAngleMax;i+=STROPE_MARGIN){
-            float innerCircleEdgePointX = (float) (rStripeInnerCircle * Math.cos(Math.toRadians(i)) + centerX);
-            float innerCircleEdgePointY = (float) (rStripeInnerCircle * Math.sin(Math.toRadians(i)) + centerY);
+            float innerCircleEdgePointX = (float) (rStripeInnerCircle * Math.cos(Math.toRadians(i)) + mCenterX);
+            float innerCircleEdgePointY = (float) (rStripeInnerCircle * Math.sin(Math.toRadians(i)) + mCenterY);
 
-            float outCircleEdgePointX = (float) (rStripeOuterCircle * Math.cos(Math.toRadians(i)) + centerX);
-            float outCircleEdgePointY = (float) (rStripeOuterCircle * Math.sin(Math.toRadians(i)) + centerY);
+            float outCircleEdgePointX = (float) (rStripeOuterCircle * Math.cos(Math.toRadians(i)) + mCenterX);
+            float outCircleEdgePointY = (float) (rStripeOuterCircle * Math.sin(Math.toRadians(i)) + mCenterY);
             canvas.drawLine(outCircleEdgePointX, outCircleEdgePointY, innerCircleEdgePointX, innerCircleEdgePointY, mPaint);
         }
     }
